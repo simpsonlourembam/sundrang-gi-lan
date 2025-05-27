@@ -21,9 +21,16 @@ asteroidImage2.src = 'nungjao2.png';
 const bulletImage = new Image();
 bulletImage.src = 'maru.png';
 
+// Load boss and boss bullet images
+const bossImage = new Image();
+bossImage.src = 'hingchaba.png';
+
+const bossBulletImage = new Image();
+bossBulletImage.src = 'hingchaba\'s maru.png';
+
 // Keep track of loaded images
 let imagesLoaded = 0;
-const totalImages = 5; // Updated totalImages count
+const totalImages = 7; // Updated totalImages count
 
 function imageLoaded() {
     imagesLoaded++;
@@ -40,6 +47,8 @@ enemyImage.onload = imageLoaded;
 asteroidImage1.onload = imageLoaded;
 asteroidImage2.onload = imageLoaded;
 bulletImage.onload = imageLoaded;
+bossImage.onload = imageLoaded;
+bossBulletImage.onload = imageLoaded;
 
 // Add error handling for image loading (optional but recommended)
 playerImage.onerror = () => { console.error('Error loading player image.'); };
@@ -47,6 +56,8 @@ enemyImage.onerror = () => { console.error('Error loading enemy image.'); };
 asteroidImage1.onerror = () => { console.error('Error loading asteroid image 1.'); };
 asteroidImage2.onerror = () => { console.error('Error loading asteroid image 2.'); };
 bulletImage.onerror = () => { console.error('Error loading bullet image.'); };
+bossImage.onerror = () => { console.error('Error loading boss image.'); };
+bossBulletImage.onerror = () => { console.error('Error loading boss bullet image.'); };
 
 // Keyboard and touch state
 const keys = {};
@@ -214,10 +225,15 @@ for (let i = 0; i < maxAsteroids; i++) {
 // Draw health and energy bars
 function drawUI() {
     // Health bar
-    ctx.fillStyle = 'red';
-    ctx.fillRect(20, 20, player.health / player.maxHealth * 100, 10);
+    ctx.fillStyle = 'green';
+    // Position the health bar above the player ship
+    const healthBarWidth = player.width;
+    const healthBarHeight = 5;
+    const healthBarX = player.x - player.width / 2;
+    const healthBarY = player.y - player.height / 2 - 10; // 10 pixels above the ship
+    ctx.fillRect(healthBarX, healthBarY, player.health / player.maxHealth * healthBarWidth, healthBarHeight);
     ctx.strokeStyle = 'white';
-    ctx.strokeRect(20, 20, 100, 10);
+    ctx.strokeRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
 }
 
 // Game state variables
@@ -241,7 +257,10 @@ let lastFireTime = 0;
 
 setInterval(() => {
     if (gameState === 'playing' && !isPaused) {
-        shoot(); // Call shoot function every interval
+        // Fire two bullets from the player ship
+        const bullet1 = new Bullet(player.x - player.width / 4, player.y - player.height / 2); // Left bullet
+        const bullet2 = new Bullet(player.x + player.width / 4, player.y - player.height / 2); // Right bullet
+        bullets.push(bullet1, bullet2);
     }
 }, fireInterval);
 
@@ -249,6 +268,14 @@ setInterval(() => {
 const asteroidSpawnInterval = 1000; // Spawn an asteroid every second (adjust as needed)
 let lastAsteroidSpawnTime = 0;
 const initialAsteroids = 20; // Keep initial number for the count display, but spawn continuously
+
+setInterval(() => {
+    if (gameState === 'playing' && !isPaused && asteroids.length < 50) { // Limit max asteroids on screen for performance
+        spawnAsteroid();
+    }
+}, asteroidSpawnInterval);
+
+let boss = null; // Variable to hold the boss object
 
 function gameLoop() {
     // Clear the canvas
@@ -272,8 +299,8 @@ function gameLoop() {
                     bullets.splice(i, 1); // Remove bullet
                     asteroids.splice(j, 1); // Remove asteroid
                     destroyedAsteroids++;
-                    if (destroyedAsteroids >= maxAsteroids) { // Win condition: destroy all initial asteroids
-                        gameState = 'win';
+                    if (destroyedAsteroids === initialAsteroids && boss === null) { // Trigger boss fight
+                        spawnBoss();
                     }
                     // Prevent checking the next bullet if the current one was removed
                     if (i < bullets.length) { // Check if the bullet at index i still exists
@@ -312,6 +339,57 @@ function gameLoop() {
                 asteroids.splice(i, 1);
             }
         }
+
+        // Update boss if exists
+        if (boss) {
+            boss.update();
+            // Check for collision between player bullets and boss
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                if (boss.collidesWith(bullets[i])) {
+                    bullets.splice(i, 1); // Remove bullet
+                    bossHits++;
+                    boss.health = bossMaxHealth - (bossHits * (bossMaxHealth / bossHitThreshold)); // Update boss health bar visually
+                    if (bossHits >= bossHitThreshold) {
+                        // Boss defeated!
+                        gameState = 'win';
+                        console.log('Boss defeated!');
+                        // Remove the boss
+                        boss = null;
+                        // Clear any remaining boss bullets
+                        bossBullets.length = 0;
+                    }
+                    // Prevent checking the next bullet if the current one was removed
+                    if (i < bullets.length) {
+                        // If a bullet collides with the boss and is removed, the next bullet shifts down
+                        // We need to adjust the outer loop index to avoid skipping a bullet
+                        // This is a simple approach; for more complex scenarios, a different iteration method might be better
+                    } else {
+                       // If the last bullet was removed, the loop will terminate or continue correctly
+                    }
+                    break; // Only one boss can be hit per player bullet
+                }
+            }
+        }
+
+        // Update boss bullets
+        for (let i = bossBullets.length - 1; i >= 0; i--) {
+            bossBullets[i].update();
+
+            // Check for collision with player
+            if (bossBullets[i].collidesWith(player)) {
+                player.health -= 10; // Decrease player health (example value)
+                if (player.health <= 0) {
+                    gameState = 'gameOver';
+                    console.log('Game Over!');
+                }
+                bossBullets.splice(i, 1); // Remove boss bullet on collision
+            }
+
+            // Remove boss bullets that are off-screen
+            if (bossBullets[i].y > canvas.height || bossBullets[i].y < 0 || bossBullets[i].x < 0 || bossBullets[i].x > canvas.width) {
+                bossBullets.splice(i, 1);
+            }
+        }
     }
 
     // Draw game objects (e.g., background, player, enemies, asteroids) - Always draw
@@ -321,6 +399,16 @@ function gameLoop() {
     }
     for (const asteroid of asteroids) {
         asteroid.draw();
+    }
+    // Draw boss if exists
+    if (boss) {
+        boss.draw();
+        boss.drawHealthBar();
+    }
+
+    // Draw boss bullets
+    for (const bossBullet of bossBullets) {
+        bossBullet.draw();
     }
 
     // Draw UI elements
@@ -383,7 +471,7 @@ function drawWin() {
     ctx.fillStyle = 'white';
     ctx.font = '50px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('You Win!', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('Boss Defeated!', canvas.width / 2, canvas.height / 2);
     ctx.textAlign = 'left'; // Reset text alignment
 }
 
@@ -398,5 +486,126 @@ function drawStars() {
         ctx.beginPath();
         ctx.arc(x, y, size / 2, 0, Math.PI * 2);
         ctx.fill();
+    }
+}
+
+// Boss properties and class
+const bossHealth = 100;
+const bossMaxHealth = 100;
+const bossName = "Sungdrang Hingchaba";
+const bossBulletSpeed = 10; // Increased speed
+const bossBulletSize = 15;
+const bossFireInterval = 1500; // Boss fires every 1.5 seconds
+let lastBossFireTime = 0;
+const bossHitThreshold = 50; // Boss dies after 50 hits
+let bossHits = 0;
+
+class Boss {
+    constructor(x, y, width, height) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.health = bossHealth;
+        this.maxHealth = bossMaxHealth;
+        this.name = bossName;
+    }
+
+    update() {
+        // Boss does not move
+        // Handle boss firing
+        const currentTime = Date.now();
+        if (currentTime - lastBossFireTime > bossFireInterval) {
+            this.shoot();
+            lastBossFireTime = currentTime;
+        }
+    }
+
+    draw() {
+        // Draw the boss image, centered
+        ctx.drawImage(bossImage, this.x - this.width / 2, this.y - this.height / 2, this.width, this.height);
+    }
+
+    drawHealthBar() {
+        // Draw health bar above the boss
+        ctx.fillStyle = 'red';
+        const healthBarWidth = this.width;
+        const healthBarHeight = 5;
+        const healthBarX = this.x - this.width / 2;
+        const healthBarY = this.y - this.height / 2 - 10; // 10 pixels above the boss
+        ctx.fillRect(healthBarX, healthBarY, this.health / this.maxHealth * healthBarWidth, healthBarHeight);
+        ctx.strokeStyle = 'white';
+        ctx.strokeRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+
+        // Draw boss name
+        ctx.fillStyle = 'white';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.name, this.x, healthBarY - 10); // 10 pixels above the health bar
+        ctx.textAlign = 'left'; // Reset text alignment
+    }
+
+    shoot() {
+        // Calculate direction towards the player
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+
+        // Create a new boss bullet
+        const bossBullet = new BossBullet(this.x, this.y, angle);
+        bossBullets.push(bossBullet);
+    }
+
+    collidesWith(gameObject) {
+        // Simple rectangle collision detection
+        return this.x - this.width / 2 < gameObject.x + gameObject.width / 2 &&
+               this.x + this.width / 2 > gameObject.x - gameObject.width / 2 &&
+               this.y - this.height / 2 < gameObject.y + gameObject.height / 2 &&
+               this.y + this.height / 2 > gameObject.y - gameObject.height / 2;
+    }
+}
+
+function spawnBoss() {
+    // Spawn boss in the middle of the screen
+    const bossWidth = 150; // Increased boss size slightly
+    const bossHeight = 150;
+    const bossX = canvas.width / 2;
+    const bossY = canvas.height / 4; // Position it in the upper part of the screen
+    boss = new Boss(bossX, bossY, bossWidth, bossHeight);
+    console.log('Boss spawned!');
+    // Stop asteroid spawning once the boss is here (optional, can keep spawning)
+    // clearInterval(asteroidSpawnInterval);
+}
+
+// Boss bullet properties and class
+const bossBullets = [];
+
+class BossBullet {
+    constructor(x, y, angle) {
+        this.x = x;
+        this.y = y;
+        this.width = bossBulletSize; // Use size for width and height
+        this.height = bossBulletSize;
+        this.speed = bossBulletSpeed;
+        this.angle = angle; // Angle of movement towards player
+        // Calculate velocity components based on angle
+        this.dx = Math.cos(this.angle) * this.speed;
+        this.dy = Math.sin(this.angle) * this.speed;
+    }
+
+    update() {
+        this.x += this.dx;
+        this.y += this.dy;
+    }
+
+    draw() {
+        // Draw boss bullet image, centered
+        ctx.drawImage(bossBulletImage, this.x - this.width / 2, this.y - this.height / 2, this.width, this.height);
+    }
+
+     collidesWith(gameObject) {
+        // Simple rectangle collision detection
+        return this.x - this.width / 2 < gameObject.x + gameObject.width / 2 &&
+               this.x + this.width / 2 > gameObject.x - gameObject.width / 2 &&
+               this.y - this.height / 2 < gameObject.y + gameObject.height / 2 &&
+               this.y + this.height / 2 > gameObject.y - gameObject.height / 2;
     }
 } 
