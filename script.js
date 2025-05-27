@@ -383,6 +383,7 @@ function gameLoop() {
                     console.log('Game Over!');
                 }
                 bossBullets.splice(i, 1); // Remove boss bullet on collision
+                continue; // Move to the next iteration after collision
             }
 
             // Remove boss bullets that are off-screen
